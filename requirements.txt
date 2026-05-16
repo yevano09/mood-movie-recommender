@@ -1,0 +1,6 @@
+opencv-python>=4.10.0
+mediapipe>=0.10.20
+numpy>=2.0.0
+crewai>=0.80.0
+crewai-tools>=0.14.0
+langchain-ollama>=0.1.0
