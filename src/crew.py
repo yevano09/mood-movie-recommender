@@ -1,29 +1,17 @@
-from crewai import Agent, Task, Crew
-from langchain_ollama import OllamaLLM
+import os
+import json
+from crewai import Agent, Task, Crew, LLM
 
 
 class MoodCrew:
     def __init__(self):
-        self.llm = OllamaLLM(model="llama3.2")
+        os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+        os.environ["no_proxy"] = "localhost,127.0.0.1"
+        os.environ["OLLAMA_HOST"] = "http://127.0.0.1:11434"
+        self.llm = LLM(model="ollama/llama3.2", base_url="http://127.0.0.1:11434")
         self._setup_agents()
 
     def _setup_agents(self):
-        self.face_detector_agent = Agent(
-            role="Face Detector",
-            goal="Detect faces and extract facial landmarks from webcam images",
-            backstory="Expert in computer vision and facial landmark detection using MediaPipe",
-            llm=self.llm,
-            verbose=False
-        )
-
-        self.mood_analyzer_agent = Agent(
-            role="Mood Analyzer",
-            goal="Analyze facial landmarks to determine the person's emotional state",
-            backstory="Expert in interpreting facial expressions and determining mood from facial geometry",
-            llm=self.llm,
-            verbose=False
-        )
-
         self.movie_recommender_agent = Agent(
             role="Movie Recommender",
             goal="Recommend movies based on the detected mood",
@@ -32,39 +20,44 @@ class MoodCrew:
             verbose=False
         )
 
-    def detect_face_task(self, frame_info):
-        return Task(
-            description=f"Process the webcam frame and detect facial landmarks. Frame info: {frame_info}",
-            agent=self.face_detector_agent,
-            expected_output="Facial landmark coordinates"
-        )
+    def generate_all_details(self, movies_by_mood):
+        cache = {}
+        for mood, movies in movies_by_mood.items():
+            prompt = f"""The user's current mood is: {mood}
 
-    def analyze_mood_task(self, landmarks_info):
-        return Task(
-            description=f"Analyze the facial landmarks to determine mood: {landmarks_info}",
-            agent=self.mood_analyzer_agent,
-            expected_output="Mood classification (happy, sad, neutral, angry, surprised, tired, excited)"
-        )
+Here are the recommended movies for this mood:
+{chr(10).join(f'{i+1}. {m}' for i, m in enumerate(movies))}
 
-    def recommend_movies_task(self, mood_info):
-        return Task(
-            description=f"Based on the detected mood ({mood_info}), recommend 5 suitable movies",
-            agent=self.movie_recommender_agent,
-            expected_output="List of 5 movie recommendations with brief descriptions"
-        )
+For each movie, provide:
+- A one-line hook or tagline
+- Why it fits this mood (1 sentence)
+- A fun fact or notable detail
 
-    def run_simple_workflow(self, mood, movies):
-        prompt = f"""Based on the detected mood '{mood}', here are the recommended movies:
-{', '.join(movies)}
+Keep the total response under 600 characters so it fits on screen."""
 
-Please provide a brief personalized introduction for these recommendations."""
+            task = Task(
+                description=prompt,
+                agent=self.movie_recommender_agent,
+                expected_output="A short personalized summary with movie details for each recommendation"
+            )
 
-        task = Task(
-            description=prompt,
-            agent=self.movie_recommender_agent,
-            expected_output="Movie recommendations with personalized intro"
-        )
+            crew = Crew(agents=[self.movie_recommender_agent], tasks=[task], verbose=False)
+            result = crew.kickoff()
+            cache[mood] = str(result)
+            print(f"  Generated details for: {mood}")
 
-        crew = Crew(agents=[self.movie_recommender_agent], tasks=[task], verbose=False)
-        result = crew.kickoff()
-        return str(result)
+        return cache
+
+    def save_cache(self, cache, path):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        full_path = os.path.join(base_dir, path)
+        with open(full_path, "w") as f:
+            json.dump(cache, f, indent=2)
+
+    def load_cache(self, path):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        full_path = os.path.join(base_dir, path)
+        if not os.path.exists(full_path):
+            return None
+        with open(full_path, "r") as f:
+            return json.load(f)

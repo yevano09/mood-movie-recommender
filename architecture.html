@@ -1,0 +1,1478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mood Movie Recommender · Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:        #0a0d12;
+    --bg-2:      #0f1419;
+    --panel:     #121821;
+    --panel-2:   #182030;
+    --border:    #1f2937;
+    --border-2:  #2a3650;
+    --text:      #e6edf7;
+    --muted:     #8492a8;
+    --dim:       #5a6679;
+
+    --c-user:        #46f9b8;
+    --c-orch:        #6aa9ff;
+    --c-compute:     #ff6b8a;
+    --c-embed:       #ffc14d;
+    --c-vector:      #b388ff;
+    --c-seed:        #ff9457;
+
+    --brand-violet:  #a201ff;
+    --brand-mint:    #46f9b8;
+
+    --radius:        14px;
+    --radius-sm:     8px;
+
+    --shadow-soft:   0 10px 30px rgba(0,0,0,.45);
+    --shadow-pop:    0 0 0 1px rgba(255,255,255,.04), 0 18px 50px rgba(0,0,0,.55);
+
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-feature-settings: "ss01","ss02","cv11";
+    min-height:100vh;
+    overflow-x:hidden;
+    background-image:
+      radial-gradient(1200px 600px at 15% -10%, rgba(106,169,255,.07), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(162,1,255,.06), transparent 60%),
+      radial-gradient(800px 600px at 50% 120%, rgba(70,249,184,.04), transparent 60%);
+  }
+
+  body::before{
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:
+      linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 30%, #000 30%, transparent 75%);
+  }
+
+  header{
+    position:relative; z-index:2;
+    padding: 36px 32px 12px;
+    max-width: 1480px; margin: 0 auto;
+  }
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family: var(--mono); font-size:11px; letter-spacing:.18em;
+    color: var(--muted); text-transform: uppercase;
+    padding: 6px 10px;
+    border:1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255,255,255,.015);
+  }
+  .eyebrow .dot{
+    width:6px; height:6px; border-radius:50%; background: var(--brand-mint);
+    box-shadow: 0 0 12px var(--brand-mint);
+  }
+  h1{
+    margin: 16px 0 6px;
+    font-size: clamp(28px, 3.6vw, 44px);
+    font-weight: 600; letter-spacing:-.02em;
+    line-height: 1.05;
+  }
+  h1 .accent{
+    background: linear-gradient(90deg, var(--brand-mint), var(--c-orch) 50%, var(--brand-violet));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub{
+    color: var(--muted); font-size: 15px; max-width: 70ch;
+    margin: 0;
+  }
+
+  .controls{
+    position:relative; z-index:2;
+    max-width: 1480px; margin: 28px auto 0; padding: 0 32px;
+    display:flex; flex-wrap:wrap; gap:18px;
+    align-items:center; justify-content:space-between;
+  }
+
+  .modepick{
+    display:inline-flex; padding:4px;
+    background: var(--panel); border:1px solid var(--border);
+    border-radius: 12px;
+  }
+  .modepick button{
+    border:0; background:transparent; color: var(--muted);
+    font-family: var(--sans); font-weight:500; font-size:13px;
+    padding: 9px 16px; border-radius: 8px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:8px;
+    transition: all .25s ease;
+  }
+  .modepick button .pill{
+    font-family: var(--mono); font-size:10px;
+    padding: 2px 6px; border-radius: 4px;
+    background: rgba(255,255,255,.05); color: var(--muted);
+  }
+  .modepick button[aria-pressed="true"]{
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border-2);
+  }
+  .modepick button[aria-pressed="true"][data-mode="ollama"] .pill{ background: rgba(106,169,255,.16); color: var(--c-orch); }
+  .modepick button[aria-pressed="true"][data-mode="no_ollama"] .pill{ background: rgba(255,148,87,.18); color: var(--c-seed); }
+
+  .legend{
+    display:flex; flex-wrap:wrap; gap:14px;
+    font-family: var(--mono); font-size:11px; color: var(--muted);
+  }
+  .legend .item{ display:inline-flex; align-items:center; gap:6px; }
+  .legend .swatch{ width:10px; height:10px; border-radius:3px; box-shadow: 0 0 0 1px rgba(255,255,255,.06); }
+
+  .flowtabs{
+    position:relative; z-index:2;
+    max-width: 1480px; margin: 18px auto 0; padding: 0 32px;
+    display:flex; flex-wrap:wrap; gap:8px;
+  }
+  .flowtab{
+    appearance:none; border:1px solid var(--border);
+    background: var(--panel); color: var(--muted);
+    font-family: var(--mono); font-size: 12px; letter-spacing:.04em;
+    padding: 10px 14px; border-radius: 10px;
+    display:inline-flex; align-items:center; gap:10px;
+    cursor:pointer; transition: all .2s ease;
+  }
+  .flowtab .num{
+    font-size:10px;
+    background: rgba(255,255,255,.06); color: var(--muted);
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .flowtab:hover{ color: var(--text); border-color: var(--border-2); }
+  .flowtab[aria-pressed="true"]{
+    border-color: var(--brand-mint);
+    color: var(--text);
+    background: linear-gradient(180deg, rgba(70,249,184,.10), rgba(70,249,184,.02));
+    box-shadow: 0 0 0 4px rgba(70,249,184,.06);
+  }
+  .flowtab[aria-pressed="true"] .num{
+    background: var(--brand-mint); color: #08120e;
+  }
+
+  main{
+    position:relative; z-index:1;
+    max-width: 1480px; margin: 22px auto 80px; padding: 0 32px;
+    display:grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 1180px){
+    main{ grid-template-columns: 1fr; }
+  }
+
+  .canvas{
+    position:relative;
+    background:
+      radial-gradient(800px 400px at 50% 20%, rgba(106,169,255,.06), transparent 60%),
+      linear-gradient(180deg, var(--panel) 0%, var(--bg-2) 100%);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 36px 28px 28px;
+    min-height: 540px;
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  .canvas::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.02) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(circle at 50% 40%, #000 30%, transparent 80%);
+  }
+
+  .canvas-head{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom: 18px; position:relative; z-index:2;
+  }
+  .canvas-title{
+    font-family: var(--mono); font-size:11px; letter-spacing:.16em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .player{
+    display:flex; gap:6px; align-items:center;
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
+  .player button{
+    appearance:none; border:1px solid var(--border); background: var(--panel-2);
+    color: var(--muted); cursor:pointer;
+    width: 30px; height: 30px; border-radius: 8px;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition: all .15s ease;
+  }
+  .player button:hover{ color: var(--text); border-color: var(--border-2); }
+  .player button[aria-pressed="true"]{
+    background: rgba(70,249,184,.12); border-color: var(--brand-mint); color: var(--brand-mint);
+  }
+  .player .stepidx{
+    padding: 0 10px; min-width: 64px; text-align:center;
+  }
+
+  .progress-track{
+    width:100%; height: 3px; background: var(--border);
+    border-radius: 2px; margin-top: 4px;
+    grid-column: 1 / -1;
+  }
+  .progress-fill{
+    height:100%; border-radius: 2px;
+    background: var(--brand-mint);
+    transition: width .35s ease;
+    box-shadow: 0 0 8px rgba(70,249,184,.3);
+  }
+
+  .stage{
+    position:relative;
+    width: 100%;
+    height: 460px;
+  }
+
+  .stage svg.wires{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none;
+  }
+
+  .node{
+    position:absolute;
+    width: 150px;
+    padding: 14px 14px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+    transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .35s ease, border-color .25s ease, box-shadow .25s ease;
+    z-index: 2;
+    cursor: pointer;
+    user-select: none;
+    touch-action: none;
+  }
+  .node.dragging{
+    z-index: 100;
+    cursor: grabbing;
+    transition: none;
+    box-shadow: 0 0 0 2px var(--c), 0 20px 60px rgba(0,0,0,.5);
+    transform: scale(1.04);
+  }
+  .node:hover{
+    border-color: color-mix(in srgb, var(--c) 60%, var(--border-2));
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent);
+  }
+  .node:hover .label{ color: var(--c); }
+  .node:focus-visible{
+    outline: 2px solid var(--c);
+    outline-offset: 4px;
+  }
+  .node .label{
+    font-size: 13px; font-weight: 600; letter-spacing:-.01em;
+    margin: 0 0 4px;
+  }
+  .node .tech{
+    font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+    line-height: 1.4;
+  }
+  .node .port{
+    margin-top: 8px;
+    font-family: var(--mono); font-size: 10.5px;
+    color: var(--c-orch);
+  }
+  .node .icon{
+    width: 28px; height: 28px; border-radius: 8px;
+    display:inline-flex; align-items:center; justify-content:center;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border-2);
+  }
+  .node[data-role="user"]   { --c: var(--c-user); }
+  .node[data-role="orch"]   { --c: var(--c-orch); }
+  .node[data-role="compute"] { --c: var(--c-compute); }
+  .node[data-role="embed"]  { --c: var(--c-embed); }
+  .node[data-role="vector"] { --c: var(--c-vector); }
+  .node[data-role="seed"]   { --c: var(--c-seed); }
+  .node .icon{ color: var(--c); }
+  .node::before{
+    content:""; position:absolute; left:0; top:14px; bottom:14px; width:3px;
+    background: var(--c); border-radius: 3px;
+    opacity:.7;
+  }
+
+  .node.hidden{ opacity: 0; transform: scale(.92); pointer-events: none; }
+
+  @keyframes node-shake {
+    0%, 100%{ transform: translateX(0); }
+    20%{ transform: translateX(-4px); }
+    40%{ transform: translateX(4px); }
+    60%{ transform: translateX(-3px); }
+    80%{ transform: translateX(2px); }
+  }
+
+  .node.active{
+    border-color: var(--c);
+    box-shadow:
+      0 0 0 1px var(--c),
+      0 0 0 6px color-mix(in srgb, var(--c) 18%, transparent),
+      var(--shadow-pop);
+    transform: translateY(-2px);
+  }
+  .node.active-from{
+    border-color: var(--c);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--c) 70%, transparent),
+      0 0 0 4px color-mix(in srgb, var(--c) 10%, transparent),
+      var(--shadow-soft);
+    opacity: .95;
+  }
+  .node.participant{
+    opacity: .8;
+    filter: saturate(.85);
+  }
+  .node.dimmed{ opacity: .25; filter: saturate(.4); }
+
+  .node .step-badge{
+    position:absolute; top:-10px; right:-10px;
+    width:24px; height:24px; border-radius:50%;
+    background: var(--c); color:#0a0d12;
+    font-family: var(--mono); font-weight:600; font-size: 11px;
+    display:flex; align-items:center; justify-content:center;
+    opacity: 0; transform: scale(.6);
+    transition: opacity .2s ease, transform .25s cubic-bezier(.2,1.2,.2,1);
+    box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 0 2px var(--bg-2);
+  }
+  .node.has-badge .step-badge{ opacity:1; transform: scale(1); }
+
+  .wire{
+    fill:none;
+    stroke: var(--border-2);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 6;
+    opacity: .55;
+    transition: opacity .3s ease, stroke .3s ease;
+  }
+  .wire.active{
+    stroke: var(--wire-color, var(--brand-mint));
+    stroke-width: 2.5;
+    stroke-dasharray: 0;
+    opacity: 1;
+    filter: drop-shadow(0 0 6px var(--wire-color, var(--brand-mint)));
+  }
+  .wire.preview{
+    stroke: var(--wire-color, var(--border-2));
+    stroke-width: 1.5;
+    stroke-dasharray: 3 5;
+    opacity: .5;
+  }
+  .wire.muted{ opacity: .08; }
+
+  .packet{
+    r: 5;
+    fill: var(--wire-color, var(--brand-mint));
+    filter: drop-shadow(0 0 8px var(--wire-color, var(--brand-mint)));
+    opacity: 0;
+  }
+  .packet.run{ opacity: 1; }
+
+  .wire-label{
+    font-family: var(--mono); font-size: 10px;
+    fill: var(--muted);
+    paint-order: stroke;
+    stroke: var(--bg-2); stroke-width: 4;
+    transition: fill .3s ease;
+  }
+  .wire-label.active{ fill: var(--wire-color, var(--brand-mint)); font-weight: 600; }
+  .wire-label.preview{ fill: var(--muted); opacity: .8; }
+
+  aside{
+    position: sticky; top: 18px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.005));
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px 20px 18px;
+    box-shadow: var(--shadow-soft);
+    min-height: 540px;
+    display:flex; flex-direction:column;
+  }
+  .panel-head{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .panel-step{
+    font-family: var(--mono); font-size: 11px; letter-spacing:.16em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  .panel-step strong{
+    color: var(--text); font-weight: 600;
+  }
+  .panel-mode{
+    font-family: var(--mono); font-size: 10px;
+    padding: 4px 8px; border-radius: 6px;
+    background: rgba(255,255,255,.04); color: var(--muted);
+    border:1px solid var(--border);
+  }
+  .panel-mode[data-mode="ollama"]{ color: var(--c-orch); border-color: rgba(106,169,255,.3); }
+  .panel-mode[data-mode="no_ollama"]{ color: var(--c-seed); border-color: rgba(255,148,87,.35); }
+
+  .panel-title{
+    font-size: 18px; font-weight: 600; margin: 14px 0 4px;
+    letter-spacing:-.01em;
+  }
+  .panel-route{
+    font-family: var(--mono); font-size: 12px;
+    color: var(--muted); margin-bottom: 12px;
+    display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .panel-route .from, .panel-route .to{
+    color: var(--text);
+    padding: 3px 7px; border-radius: 6px;
+    background: rgba(255,255,255,.04);
+    border:1px solid var(--border);
+  }
+  .panel-route .arrow{ color: var(--brand-mint); }
+
+  .panel-desc{
+    color: var(--muted); font-size: 13.5px; line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  .panel-desc em{ color: var(--text); font-style: normal; }
+
+  .panel-payload{
+    font-family: var(--mono); font-size: 11.5px;
+    background: #08111c;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: #c9d6e8;
+    overflow:auto; max-height: 260px;
+    line-height: 1.6;
+    margin: 0 0 14px;
+    white-space: pre;
+    -webkit-overflow-scrolling: touch;
+  }
+  .panel-payload .k{ color: #ffc14d; }
+  .panel-payload .s{ color: #46f9b8; }
+  .panel-payload .n{ color: #b388ff; }
+  .panel-payload .c{ color: var(--muted); }
+
+  .panel-meta{
+    margin-top:auto; padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    display:flex; gap: 8px; flex-wrap:wrap;
+  }
+  .chip{
+    font-family: var(--mono); font-size: 10.5px;
+    padding: 5px 9px; border-radius: 999px;
+    background: rgba(255,255,255,.035); border:1px solid var(--border);
+    color: var(--muted);
+  }
+  .chip.lat::before{ content:"⏱ "; color: var(--brand-mint); }
+  .chip.size::before{ content:"⛁ "; color: var(--c-vector); }
+
+  .step-nav{
+    display:flex; gap:8px; margin-top: 14px;
+  }
+  .step-nav button{
+    flex:1; padding: 9px 12px;
+    background: var(--panel-2); color: var(--text);
+    border:1px solid var(--border); border-radius: 9px;
+    font-family: var(--sans); font-size: 12.5px; cursor:pointer;
+    transition: all .15s ease;
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  }
+  .step-nav button:hover{ border-color: var(--brand-mint); color: var(--brand-mint); }
+  .step-nav button:disabled{ opacity:.4; cursor:not-allowed; }
+
+  .scenario-note{
+    position: relative; z-index: 2;
+    max-width: 1480px; margin: 14px auto 0; padding: 0 32px;
+    color: var(--dim); font-size: 12px;
+    font-family: var(--mono);
+  }
+  .scenario-note kbd{
+    font-family: var(--mono); font-size: 11px;
+    padding: 2px 6px; border-radius: 4px;
+    background: var(--panel-2); border:1px solid var(--border); color: var(--text);
+  }
+
+  @media (max-width: 720px){
+    header{ padding: 24px 18px 8px; }
+    .controls, .flowtabs, main, .scenario-note{ padding-left: 18px; padding-right: 18px; }
+    main{ gap:18px; }
+    .canvas{ padding: 22px 14px 18px; }
+    .stage{ height: 420px; }
+    .node{ width: 132px; padding: 12px; }
+    .node .label{ font-size: 12px; }
+    .node .tech{ font-size: 10px; }
+    aside{ position: static; }
+  }
+
+  button:focus-visible, .flowtab:focus-visible{
+    outline: 2px solid var(--brand-mint); outline-offset: 2px;
+  }
+
+  body.light{
+    --bg:        #f6f7fa;
+    --bg-2:      #ffffff;
+    --panel:     #ffffff;
+    --panel-2:   #f1f3f8;
+    --border:    #e2e6ee;
+    --border-2:  #c8d0dd;
+    --text:      #0f1419;
+    --muted:     #555f70;
+    --dim:       #8492a8;
+
+    --c-user:    #00b377;
+    --c-orch:    #2a6fdb;
+    --c-compute: #d63a5f;
+    --c-embed:   #c98a00;
+    --c-vector:  #7a4ed1;
+    --c-seed:    #d96e2c;
+
+    --brand-violet: #7a1cd9;
+    --brand-mint:   #00b377;
+
+    --shadow-soft: 0 4px 18px rgba(15,20,25,.06);
+    --shadow-pop:  0 0 0 1px rgba(15,20,25,.04), 0 8px 24px rgba(15,20,25,.08);
+
+    background-image:
+      radial-gradient(1200px 600px at 15% -10%, rgba(42,111,219,.05), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(122,28,217,.04), transparent 60%),
+      radial-gradient(800px 600px at 50% 120%, rgba(0,179,119,.03), transparent 60%);
+  }
+  body.light::before{
+    background-image:
+      linear-gradient(rgba(0,0,0,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,0,0,.03) 1px, transparent 1px);
+  }
+  body.light .panel-payload{
+    background: #f0f2f7;
+    color: #1e2838;
+    border-color: var(--border);
+  }
+  body.light .panel-payload .k{ color: #a16800; }
+  body.light .panel-payload .s{ color: #00855a; }
+  body.light .panel-payload .n{ color: #6b3faf; }
+  body.light .eyebrow{ background: rgba(0,0,0,.02); }
+  body.light .eyebrow .dot{ box-shadow: 0 0 8px var(--brand-mint); }
+  body.light .legend .swatch{ box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+  body.light .wire-label{ stroke: var(--panel); stroke-width: 5; }
+  body.light .node{ box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  body.light .node.active{ box-shadow: 0 0 0 1px var(--c), 0 0 0 6px color-mix(in srgb, var(--c) 12%, transparent), 0 4px 16px rgba(0,0,0,.08); }
+  body.light .wire.active{ filter: drop-shadow(0 0 4px var(--wire-color, var(--brand-mint))); }
+  body.light .chip{ background: rgba(0,0,0,.04); }
+  body.light aside{ background: linear-gradient(180deg, rgba(0,0,0,.01), rgba(0,0,0,.005)); }
+
+  .theme-toggle, .layout-reset, .fullscreen-toggle{
+    appearance:none; border:1px solid var(--border); background: var(--panel);
+    color: var(--muted); cursor:pointer;
+    width: 34px; height: 34px; border-radius: 10px;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition: all .2s ease;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover, .layout-reset:hover, .fullscreen-toggle:hover{ color: var(--text); border-color: var(--border-2); }
+  .layout-reset{ display:none; }
+  .layout-reset.has-custom{ display:inline-flex; }
+  .theme-toggle .icon-sun{ display:none; }
+  body.light .theme-toggle .icon-moon{ display:none; }
+  body.light .theme-toggle .icon-sun{ display:block; }
+
+  .canvas.is-fullscreen{
+    position:fixed; inset:0; z-index:9999;
+    border-radius:0; margin:0; max-width:none;
+    min-height:100vh;
+    overflow:auto;
+  }
+  .canvas.is-fullscreen .stage{ height: calc(100vh - 80px); }
+  .canvas.is-fullscreen ~ aside{ display:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="eyebrow"><span class="dot"></span> Computer Vision + LLM</span>
+  <h1>Mood Movie Recommender <span class="accent">Architecture</span></h1>
+  <p class="sub">Real-time webcam mood detection with facial landmark analysis, geometric mood classification, and AI-enriched movie recommendations via CrewAI + Ollama.</p>
+</header>
+
+<div class="controls">
+  <div class="modepick" role="tablist" aria-label="Deployment mode">
+    <button data-mode="ollama" aria-pressed="true">With Ollama <span class="pill">AI enriched</span></button>
+    <button data-mode="no_ollama" aria-pressed="false">Without Ollama <span class="pill">basic mode</span></button>
+  </div>
+
+  <div class="legend" aria-label="Component legend">
+    <span class="item"><span class="swatch" style="background:var(--c-user)"></span> User</span>
+    <span class="item"><span class="swatch" style="background:var(--c-orch)"></span> Capture / Detect</span>
+    <span class="item"><span class="swatch" style="background:var(--c-embed)"></span> Classifier</span>
+    <span class="item"><span class="swatch" style="background:var(--c-vector)"></span> Data / Cache</span>
+    <span class="item"><span class="swatch" style="background:var(--c-compute)"></span> LLM / CrewAI</span>
+    <span class="item"><span class="swatch" style="background:var(--c-seed)"></span> One-shot Job</span>
+  </div>
+
+  <button class="theme-toggle" id="btnTheme" title="Toggle light/dark theme (T)" aria-label="Toggle theme">
+    <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+  </button>
+  <button class="layout-reset" id="btnResetLayout" title="Reset node positions (R)" aria-label="Reset layout">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+  </button>
+  <button class="fullscreen-toggle" id="btnFullscreen" title="Fullscreen (F)" aria-label="Toggle fullscreen">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+  </button>
+</div>
+
+<nav class="flowtabs" aria-label="Scenarios">
+  <button class="flowtab" data-flow="realtime" aria-pressed="true"><span class="num">1</span> Real-time Detection</button>
+  <button class="flowtab" data-flow="cache_gen" aria-pressed="false"><span class="num">2</span> Cache Generation (first run)</button>
+  <button class="flowtab" data-flow="cache_load" aria-pressed="false"><span class="num">3</span> Cache Load (startup)</button>
+</nav>
+
+<p class="scenario-note">Shortcuts: <kbd>Space</kbd> play/pause · <kbd>&larr;</kbd>/<kbd>&rarr;</kbd> step · <kbd>1</kbd>&ndash;<kbd>3</kbd> flow · <kbd>O</kbd> mode · <kbd>T</kbd> theme · <kbd>F</kbd> fullscreen · <kbd>R</kbd> reset layout · Drag nodes to reposition</p>
+
+<main>
+  <section class="canvas" aria-label="Architecture diagram">
+    <div class="canvas-head">
+      <span class="canvas-title">Pipeline · <span id="flowName">Real-time Detection</span></span>
+      <div class="player" role="group" aria-label="Playback controls">
+        <button id="btnPrev" title="Previous step (←)" aria-label="Previous step">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button id="btnPlay" title="Play/Pause (Space)" aria-label="Play/Pause" aria-pressed="false">
+          <svg id="playIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+        </button>
+        <button id="btnNext" title="Next step (→)" aria-label="Next step">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <span class="stepidx" id="stepIdx">0 / 0</span>
+      </div>
+    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
+    <div class="stage" id="stage">
+
+      <!-- User -->
+      <div class="node" data-role="user" data-id="user" style="left: 2%; top: 38%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="label">User</div>
+        <div class="tech">Webcam · face in frame</div>
+        <div class="port">real-time</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Webcam Capture -->
+      <div class="node" data-role="orch" data-id="webcam" style="left: 18%; top: 38%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </div>
+        <div class="label">WebcamCapture</div>
+        <div class="tech">OpenCV · VideoCapture</div>
+        <div class="port">640×480</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Face Detector -->
+      <div class="node" data-role="orch" data-id="face_detector" style="left: 36%; top: 22%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+        </div>
+        <div class="label">FaceDetector</div>
+        <div class="tech">MediaPipe · 478 landmarks</div>
+        <div class="port">face_landmarker.task</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Mood Classifier -->
+      <div class="node" data-role="embed" data-id="mood_classifier" style="left: 36%; top: 58%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        </div>
+        <div class="label">MoodClassifier</div>
+        <div class="tech">EAR + mouth angle + eyebrows</div>
+        <div class="port">7 moods</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Movie Recommender -->
+      <div class="node" data-role="vector" data-id="movie_recommender" style="left: 58%; top: 38%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+        </div>
+        <div class="label">MovieRecommender</div>
+        <div class="tech">movies.json · lookup</div>
+        <div class="port" data-port-ollama="cache: movie_details.json" data-port-no_ollama="5 movies/mood">5 movies/mood</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Display -->
+      <div class="node" data-role="user" data-id="display" style="left: 78%; top: 38%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="label">Display</div>
+        <div class="tech">OpenCV · side panel</div>
+        <div class="port">GUI window</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Ollama (hidden in no_ollama mode) -->
+      <div class="node" data-role="compute" data-id="ollama" data-modes="ollama" style="left: 78%; top: 10%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44A2.5 2.5 0 0 1 4 18a2.5 2.5 0 0 1-1.55-4.45A2.5 2.5 0 0 1 4 9a2.5 2.5 0 0 1 1.55-4.45A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44A2.5 2.5 0 0 0 20 18a2.5 2.5 0 0 0 1.55-4.45A2.5 2.5 0 0 0 20 9a2.5 2.5 0 0 0-1.55-4.45A2.5 2.5 0 0 0 14.5 2z"/></svg>
+        </div>
+        <div class="label">Ollama</div>
+        <div class="tech">llama3.2 · local LLM</div>
+        <div class="port">127.0.0.1:11434</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- MoodCrew (hidden in no_ollama mode) -->
+      <div class="node" data-role="compute" data-id="moodcrew" data-modes="ollama" style="left: 58%; top: 10%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <div class="label">MoodCrew</div>
+        <div class="tech">CrewAI · Agent + Task</div>
+        <div class="port">generate_all_details()</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <!-- Cache file (hidden in no_ollama mode) -->
+      <div class="node" data-role="seed" data-id="cache" data-modes="ollama" style="left: 36%; top: 88%;">
+        <div class="icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <div class="label">Cache</div>
+        <div class="tech">movie_details.json</div>
+        <div class="port">data/</div>
+        <span class="step-badge">·</span>
+      </div>
+
+      <svg class="wires" id="wires" aria-hidden="true">
+        <defs>
+          <marker id="ah-mint"   markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--brand-mint)"/>
+          </marker>
+          <marker id="ah-sky"    markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--c-orch)"/>
+          </marker>
+          <marker id="ah-amber"  markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--c-embed)"/>
+          </marker>
+          <marker id="ah-violet" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--c-vector)"/>
+          </marker>
+          <marker id="ah-mag"    markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--c-compute)"/>
+          </marker>
+          <marker id="ah-orange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L6,3 L0,6 Z" fill="var(--c-seed)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </section>
+
+  <aside aria-label="Current step details" id="sidepanel">
+    <div class="panel-head">
+      <div class="panel-step">STEP <strong id="panelStepIdx">—</strong> / <span id="panelStepTotal">—</span></div>
+      <div class="panel-mode" id="panelMode" data-mode="ollama">OLLAMA</div>
+    </div>
+    <div class="panel-title" id="panelTitle">—</div>
+    <div class="panel-route" id="panelRoute"></div>
+    <p class="panel-desc" id="panelDesc">Select a flow and press Play to see details.</p>
+    <pre class="panel-payload" id="panelPayload"></pre>
+    <div class="panel-meta" id="panelMeta"></div>
+    <div class="step-nav">
+      <button id="btnPrev2">&larr; Previous</button>
+      <button id="btnNext2">Next &rarr;</button>
+    </div>
+  </aside>
+</main>
+
+<script>
+const flows = {
+
+  /* ═══ Flow 1: Real-time Mood Detection ═══
+     The main loop running every 5 frames (≈60ms).
+     User → Webcam → FaceDetector → MoodClassifier → MovieRecommender → Display */
+  realtime: {
+    name: "Real-time Detection",
+    note: "Main loop: capture → detect → classify → recommend → display",
+    steps: [
+      {
+        from: "user", to: "webcam", color: "--c-user",
+        title: "Capture Frame",
+        route: "cv2.VideoCapture.read()",
+        desc: "Webcam grabs an RGB frame every loop iteration. The frame is converted from BGR (OpenCV default) to RGB for MediaPipe processing.",
+        payload:
+`# WebcamCapture.capture_rgb()
+cap = cv2.VideoCapture(0)
+ret, frame = cap.read()
+rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+# Returns: (rgb_frame, bgr_frame)`,
+        chips: ["~30ms", "640×480"]
+      },
+      {
+        from: "webcam", to: "face_detector", color: "--c-orch",
+        title: "Detect Facial Landmarks",
+        route: "FaceDetector.get_landmarks()",
+        desc: "Every 5th frame, MediaPipe's Face Landmarker extracts <em>478 3D facial landmarks</em> — nose tip, eye corners, mouth contour, eyebrow positions. This runs on CPU via XNNPACK delegate.",
+        payload:
+`# face_detector.py:28-32
+mp_image = mp.Image(
+    image_format=mp.ImageFormat.SRGB,
+    data=rgb_frame
+)
+results = self.landmarker.detect(mp_image)
+landmarks = np.array([
+    (lm.x, lm.y, lm.z)
+    for lm in results.face_landmarks[0]
+])
+# Returns: 478×3 numpy array`,
+        chips: ["~15ms", "478 landmarks"]
+      },
+      {
+        from: "face_detector", to: "mood_classifier", color: "--c-embed",
+        title: "Classify Mood from Geometry",
+        route: "MoodClassifier.classify()",
+        desc: "Analyzes 4 facial geometry features: <em>Eye Aspect Ratio</em> (tired vs excited), <em>mouth corner angle</em> (smile vs frown), <em>eyebrow height</em> (surprise vs anger), and <em>lip compression</em> (tension). Each feature scores across 7 moods.",
+        payload:
+`# mood_classifier.py:64-103
+ear = calculate_ear(landmarks)         # eyes
+mouth_angle = calculate_mouth_corner_angle(landmarks)
+eyebrow_pos = calculate_eyebrow_position(landmarks)
+lip_compression = calculate_lip_compression(landmarks)
+
+# Scoring example:
+if mouth_angle > 0.1:
+    scores["happy"] += 3
+    scores["excited"] += 1
+elif mouth_angle < -0.1:
+    scores["sad"] += 2
+
+detected_mood = max(scores, key=scores.get)`,
+        chips: ["7 moods", "<1ms"]
+      },
+      {
+        from: "mood_classifier", to: "movie_recommender", color: "--c-vector",
+        title: "Look Up Movies by Mood",
+        route: "MovieRecommender.recommend()",
+        desc: "Simple dictionary lookup from <code>movies.json</code>. Returns the first 5 movies for the detected mood. Each mood has a curated list of 5 films.",
+        payload:
+`# movie_recommender.py:30-35
+movies = {
+    "happy": ["Grand Budapest Hotel", "La La Land", ...],
+    "sad": ["Shawshank Redemption", ...],
+    "neutral": ["Inception", "The Matrix", ...],
+    ...
+}
+return self.movies.get(mood, [])[:5]`,
+        chips: ["5 movies", "JSON lookup"]
+      },
+      {
+        from: "movie_recommender", to: "display", color: "--c-user",
+        title: "Render Side Panel + Mesh",
+        route: "cv2.imshow()",
+        desc: "Combines the webcam frame (with face mesh overlay and mood label) with a side panel showing: current mood (color-coded), movie list, and <em>AI details from cache</em>. The panel is resized to 700px height to fit LLM content.",
+        payload:
+`# main.py — frame loop
+frame_with_mesh = draw_face_mesh(bgr_frame, landmarks)
+side_panel = create_side_panel()  # reads movie_details cache
+combined = np.hstack([frame_with_mesh, side_panel])
+cv2.imshow("Mood Movie Recommender", combined)`,
+        chips: ["~5ms", "400×700 panel"]
+      }
+    ]
+  },
+
+  /* ═══ Flow 2: Cache Generation (first run, Ollama only) ═══
+     When movie_details.json doesn't exist, CrewAI generates it. */
+  cache_gen: {
+    name: "Cache Generation",
+    note: "One-time: CrewAI generates LLM details for all 7 moods",
+    onlyMode: "ollama",
+    onlineNote: "Requires Ollama running with llama3.2 model.",
+    steps: [
+      {
+        from: "movie_recommender", to: "moodcrew", color: "--c-compute",
+        title: "Init CrewAI Agent",
+        route: "MoodCrew.__init__()",
+        desc: "On first run, if <code>data/movie_details.json</code> doesn't exist, the app creates a <em>CrewAI Agent</em> with the Movie Recommender role. It passes all 7 moods and their movie lists to generate personalized descriptions.",
+        payload:
+`# crew.py:15-20
+os.environ["NO_PROXY"] = "localhost,127.0.0.1"
+self.llm = LLM(
+    model="ollama/llama3.2",
+    base_url="http://127.0.0.1:11434"
+)
+agent = Agent(
+    role="Movie Recommender",
+    goal="Recommend movies based on mood",
+    llm=self.llm
+)`,
+        chips: ["one-time", "proxy bypass"]
+      },
+      {
+        from: "moodcrew", to: "ollama", color: "--c-compute",
+        title: "Generate Details per Mood",
+        route: "Crew.kickoff()",
+        desc: "For each of the 7 moods, CrewAI creates a <em>Task</em> asking the LLM to provide a tagline, mood-fit reason, and fun fact for each movie. The LLM is called 7 times sequentially (≈25s each, ~3 min total).",
+        payload:
+`# crew.py:38-54
+prompt = f"""The user mood is: {mood}.
+Movies: {', '.join(movies)}.
+For each give:
+- A one-line hook or tagline
+- Why it fits this mood (1 sentence)
+- A fun fact or notable detail
+Under 600 characters total."""
+
+task = Task(description=prompt, agent=agent)
+crew = Crew(agents=[agent], tasks=[task])
+result = crew.kickoff()  # blocks for ~25s`,
+        chips: ["~25s/mood", "7 moods"]
+      },
+      {
+        from: "ollama", to: "moodcrew", color: "--c-compute",
+        title: "LLM Returns Enriched Text",
+        route: "ollama/llama3.2",
+        desc: "Ollama's llama3.2 model generates a short personalized description for each movie, including a hook, why it fits the mood, and a fun fact. Response is capped at 600 characters to fit the side panel.",
+        payload:
+`# Example output for "happy" mood:
+**Happy Movie Recommendations**
+
+1. **The Grand Budapest Hotel**
+   Hook: A whimsical adventure in a grand hotel.
+   Why: Its vibrant colors and quirky humor
+        radiate pure joy.
+   Fun fact: Ralph Fiennes improvised many lines.
+
+2. **La La Land**
+   Hook: Dream under the stars in LA.
+   Why: Captures the giddy feeling of new love.
+   Fun fact: 6-minute opening took 2 weeks to shoot.`,
+        chips: ["600 chars max", "llama3.2"]
+      },
+      {
+        from: "moodcrew", to: "cache", color: "--c-seed",
+        title: "Save Cache to Disk",
+        route: "json.dump()",
+        desc: "All 7 mood responses are saved as a JSON dictionary to <code>data/movie_details.json</code>. On subsequent runs, the app loads this file instantly — no LLM calls needed.",
+        payload:
+`# crew.py:57-61
+cache = {
+    "happy": "**Happy Movie Recommendations**...",
+    "sad": "...",
+    "neutral": "...",
+    ...
+}
+with open("data/movie_details.json", "w") as f:
+    json.dump(cache, f, indent=2)`,
+        chips: ["1 file", "idempotent"]
+      }
+    ]
+  },
+
+  /* ═══ Flow 3: Cache Load (startup) ═══
+     On every startup, load cached details if they exist. */
+  cache_load: {
+    name: "Cache Load",
+    note: "Startup: load pre-generated LLM details from disk",
+    steps: [
+      {
+        from: "cache", to: "movie_recommender", color: "--c-seed",
+        title: "Load Cached Details",
+        route: "MoodCrew.load_cache()",
+        desc: "At startup, the app checks if <code>movie_details.json</code> exists. If yes, it loads the entire dictionary into <code>self.movie_details</code>. This is instant — no network call.",
+        payload:
+`# crew.py:63-68
+def load_cache(self, path):
+    full_path = os.path.join(base_dir, path)
+    if not os.path.exists(full_path):
+        return None  # triggers generation
+    with open(full_path, "r") as f:
+        return json.load(f)
+# Returns: {"happy": "...", "sad": "...", ...}`,
+        chips: ["<1ms", "7 moods cached"]
+      },
+      {
+        from: "movie_recommender", to: "display", color: "--c-user",
+        title: "Display with Cached Details",
+        route: "create_side_panel()",
+        desc: "During the frame loop, the side panel reads from <code>self.movie_details[current_mood]</code> — a simple dict lookup. The LLM is <em>never called at runtime</em>. Details update instantly when mood changes.",
+        payload:
+`# main.py:68-76
+details = self.movie_details.get(
+    self.current_mood, ""
+)
+if details:
+    lines = details.split("\\n")
+    for line in lines:
+        cv2.putText(panel, line, ...)`,
+        chips: ["dict lookup", "zero latency"]
+      }
+    ]
+  }
+};
+
+const state = {
+  mode: "ollama",
+  flow: "realtime",
+  step: 0,
+  playing: false,
+  timer: null,
+  stepMs: 1800
+};
+
+const stage = document.getElementById("stage");
+const svgWires = document.getElementById("wires");
+const nodes = Array.from(document.querySelectorAll(".node"));
+const flowName = document.getElementById("flowName");
+const stepIdx = document.getElementById("stepIdx");
+const btnPlay = document.getElementById("btnPlay");
+const playIcon = document.getElementById("playIcon");
+const btnPrev = document.getElementById("btnPrev");
+const btnNext = document.getElementById("btnNext");
+const btnPrev2 = document.getElementById("btnPrev2");
+const btnNext2 = document.getElementById("btnNext2");
+
+const panelStepIdx = document.getElementById("panelStepIdx");
+const panelStepTotal = document.getElementById("panelStepTotal");
+const panelTitle = document.getElementById("panelTitle");
+const panelRoute = document.getElementById("panelRoute");
+const panelDesc = document.getElementById("panelDesc");
+const panelPayload = document.getElementById("panelPayload");
+const panelMeta = document.getElementById("panelMeta");
+const panelMode = document.getElementById("panelMode");
+
+function nodeById(id){ return nodes.find(n=>n.dataset.id===id); }
+
+function applyModeToNodes(){
+  const modeKey = state.mode.charAt(0).toUpperCase() + state.mode.slice(1);
+  nodes.forEach(n=>{
+    ["label","tech","port"].forEach(cls=>{
+      const el = n.querySelector(`.${cls}`);
+      if(!el) return;
+      const val = el.dataset[cls + modeKey];
+      if(val !== undefined) el.textContent = val;
+    });
+    const allowedModes = n.dataset.modes;
+    const visible = !allowedModes || allowedModes.split(",").includes(state.mode);
+    n.classList.toggle("hidden", !visible);
+  });
+  panelMode.textContent = state.mode === "ollama" ? "OLLAMA" : "NO OLLAMA";
+  panelMode.dataset.mode = state.mode;
+}
+
+function nodeCenter(node){
+  const sRect = stage.getBoundingClientRect();
+  const r = node.getBoundingClientRect();
+  return {
+    x: r.left - sRect.left + r.width/2,
+    y: r.top  - sRect.top  + r.height/2,
+    w: r.width, h: r.height
+  };
+}
+
+function nodeAnchor(node, towards){
+  const c = nodeCenter(node);
+  const dx = towards.x - c.x;
+  const dy = towards.y - c.y;
+  const dist = Math.hypot(dx, dy);
+  const hw = c.w/2, hh = c.h/2;
+  const pad = 6;
+  if(dist < 1) return { x: c.x + hw + pad, y: c.y };
+  const tx = Math.abs(dx) > 0.001 ? hw / Math.abs(dx) : 1e6;
+  const ty = Math.abs(dy) > 0.001 ? hh / Math.abs(dy) : 1e6;
+  const t = Math.min(tx, ty);
+  return {
+    x: c.x + dx * t + (dx / dist) * pad,
+    y: c.y + dy * t + (dy / dist) * pad
+  };
+}
+
+function computeWireGeometry(){
+  const flow = flows[state.flow];
+  const geom = [];
+  flow.steps.forEach((s, i) => {
+    const a = nodeById(s.from);
+    const b = nodeById(s.to);
+    if(!a || !b || a.classList.contains("hidden") || b.classList.contains("hidden")){
+      geom.push(null);
+      return;
+    }
+    const ca = nodeCenter(a);
+    const cb = nodeCenter(b);
+    const A = nodeAnchor(a, cb);
+    const B = nodeAnchor(b, ca);
+    const ddx = B.x - A.x;
+    const ddy = B.y - A.y;
+    const len = Math.hypot(ddx, ddy) || 1;
+    let nx, ny;
+    if(len < 5){ nx = 0; ny = -1; }
+    else { nx = -ddy/len; ny = ddx/len; }
+    const mx = (A.x + B.x) / 2;
+    const my = (A.y + B.y) / 2;
+    const curveAmount = Math.max(12, Math.min(50, len * 0.12));
+    const offset = curveAmount * (i % 2 === 0 ? 1 : -1);
+    const cx = mx + nx * offset;
+    const cy = my + ny * offset;
+    const d = `M ${A.x} ${A.y} Q ${cx} ${cy} ${B.x} ${B.y}`;
+    geom.push({ d, cx, cy });
+  });
+  return geom;
+}
+
+function drawWires(){
+  Array.from(svgWires.querySelectorAll(".wire, .packet, .wire-label")).forEach(el=>el.remove());
+  const sRect = stage.getBoundingClientRect();
+  svgWires.setAttribute("viewBox", `0 0 ${sRect.width} ${sRect.height}`);
+  svgWires.setAttribute("width", sRect.width);
+  svgWires.setAttribute("height", sRect.height);
+  const flow = flows[state.flow];
+  const geom = computeWireGeometry();
+  const ahMap = {
+    "--c-user":"ah-mint","--c-orch":"ah-sky","--c-embed":"ah-amber",
+    "--c-vector":"ah-violet","--c-compute":"ah-mag","--c-seed":"ah-orange"
+  };
+  flow.steps.forEach((s, i)=>{
+    const g = geom[i];
+    if(!g) return;
+    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("class","wire");
+    path.setAttribute("data-step", i);
+    path.setAttribute("d", g.d);
+    path.style.setProperty("--wire-color", `var(${s.color})`);
+    path.setAttribute("marker-end", `url(#${ahMap[s.color] || "ah-mint"})`);
+    svgWires.appendChild(path);
+    const lab = document.createElementNS("http://www.w3.org/2000/svg","text");
+    lab.setAttribute("class","wire-label");
+    lab.setAttribute("data-step", i);
+    lab.setAttribute("x", g.cx);
+    lab.setAttribute("y", g.cy + 4);
+    lab.setAttribute("text-anchor","middle");
+    lab.style.setProperty("--wire-color", `var(${s.color})`);
+    lab.textContent = (i+1);
+    svgWires.appendChild(lab);
+    const pkt = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    pkt.setAttribute("class","packet");
+    pkt.setAttribute("data-step", i);
+    pkt.setAttribute("cx", 0);
+    pkt.setAttribute("cy", 0);
+    pkt.style.setProperty("--wire-color", `var(${s.color})`);
+    svgWires.appendChild(pkt);
+    const m = document.createElementNS("http://www.w3.org/2000/svg","animateMotion");
+    m.setAttribute("dur","1.5s");
+    m.setAttribute("repeatCount","1");
+    m.setAttribute("fill","freeze");
+    m.setAttribute("begin","indefinite");
+    m.setAttribute("path", g.d);
+    pkt.appendChild(m);
+  });
+}
+
+function updateWirePaths(){
+  const sRect = stage.getBoundingClientRect();
+  svgWires.setAttribute("viewBox", `0 0 ${sRect.width} ${sRect.height}`);
+  svgWires.setAttribute("width", sRect.width);
+  svgWires.setAttribute("height", sRect.height);
+  const geom = computeWireGeometry();
+  const flow = flows[state.flow];
+  flow.steps.forEach((s, i) => {
+    const g = geom[i];
+    const wire = svgWires.querySelector(`.wire[data-step="${i}"]`);
+    const label = svgWires.querySelector(`.wire-label[data-step="${i}"]`);
+    const packet = svgWires.querySelector(`.packet[data-step="${i}"]`);
+    if(!g){ if(wire) wire.setAttribute("d", ""); return; }
+    if(wire) wire.setAttribute("d", g.d);
+    if(label){ label.setAttribute("x", g.cx); label.setAttribute("y", g.cy + 4); }
+    if(packet){
+      const motion = packet.querySelector("animateMotion");
+      if(motion) motion.setAttribute("path", g.d);
+    }
+  });
+}
+
+function applyStep(){
+  const flow = flows[state.flow];
+  const total = flow.steps.length;
+  const step = flow.steps[state.step];
+  stepIdx.textContent = `${state.step+1} / ${total}`;
+  panelStepIdx.textContent = String(state.step+1).padStart(2,"0");
+  panelStepTotal.textContent = String(total).padStart(2,"0");
+  flowName.textContent = flow.name;
+
+  const participantIds = new Set();
+  flow.steps.forEach(s=>{ participantIds.add(s.from); participantIds.add(s.to); });
+
+  nodes.forEach(n=>{
+    n.classList.remove("active","active-from","participant","dimmed","has-badge");
+    n.querySelector(".step-badge").textContent = "·";
+  });
+  const a = nodeById(step.from);
+  const b = nodeById(step.to);
+  if(a) a.classList.add("active-from");
+  if(b){
+    b.classList.add("active","has-badge");
+    b.querySelector(".step-badge").textContent = state.step+1;
+    b.querySelector(".step-badge").style.background = `var(${step.color})`;
+  }
+  nodes.forEach(n=>{
+    if(n===a || n===b) return;
+    if(n.classList.contains("hidden")) return;
+    if(participantIds.has(n.dataset.id)) n.classList.add("participant");
+    else n.classList.add("dimmed");
+  });
+
+  Array.from(svgWires.querySelectorAll(".wire, .wire-label, .packet")).forEach(el=>{
+    const s = parseInt(el.dataset.step,10);
+    el.classList.remove("active","preview","muted","run");
+    if(s === state.step){
+      if(el.classList.contains("wire") || el.classList.contains("wire-label")) el.classList.add("active");
+      if(el.classList.contains("packet")){
+        el.classList.add("run");
+        const motion = el.querySelector("animateMotion");
+        if(motion){ try{ motion.beginElement(); }catch(e){} }
+      }
+    } else if(!isNaN(s) && s >= 0 && s < total){
+      if(el.classList.contains("wire") || el.classList.contains("wire-label")) el.classList.add("preview");
+    } else {
+      el.classList.add("muted");
+    }
+  });
+
+  panelTitle.textContent = step.title;
+  panelRoute.innerHTML = `<span class="from">${prettyId(step.from)}</span><span class="arrow">→</span><span class="to">${prettyId(step.to)}</span><span style="margin-left:6px;color:var(--muted)">${step.route || ""}</span>`;
+  panelDesc.innerHTML = step.desc;
+  let payload = "";
+  if(step.payload) payload = step.payload;
+  else if(state.mode === "ollama" && step.payloadOllama) payload = step.payloadOllama;
+  else if(state.mode === "no_ollama" && step.payloadNoOllama) payload = step.payloadNoOllama;
+  panelPayload.textContent = payload;
+  let chips = step.chips;
+  if(state.mode==="ollama" && step.chipsOllama) chips = step.chipsOllama;
+  if(state.mode==="no_ollama"  && step.chipsNoOllama)  chips = step.chipsNoOllama;
+  panelMeta.innerHTML = (chips || []).map(c=>{
+    const cls = /\d+\s*(?:ms|s|min)\b/.test(c) ? "chip lat" : (/dim|×|loaded|rules|count/.test(c) ? "chip size" : "chip");
+    return `<span class="${cls}">${c}</span>`;
+  }).join("");
+  btnPrev.disabled = btnPrev2.disabled = state.step === 0;
+  btnNext.disabled = btnNext2.disabled = state.step === total-1;
+  const pct = total > 1 ? ((state.step) / (total - 1)) * 100 : 100;
+  document.getElementById("progressFill").style.width = pct + "%";
+}
+
+function esc(s){ const d=document.createElement("span"); d.textContent=s; return d.innerHTML; }
+function prettyId(id){
+  const node = nodeById(id);
+  if(!node) return esc(id);
+  const label = node.querySelector(".label");
+  return label ? esc(label.textContent) : esc(id);
+}
+
+function setPlaying(p){
+  state.playing = p;
+  btnPlay.setAttribute("aria-pressed", p ? "true" : "false");
+  playIcon.innerHTML = p
+    ? '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'
+    : '<polygon points="6 4 20 12 6 20 6 4"/>';
+  clearTimeout(state.timer);
+  if(p) state.timer = setTimeout(tick, state.stepMs);
+}
+function tick(){
+  if(!state.playing) return;
+  const total = flows[state.flow].steps.length;
+  state.step = (state.step + 1) % total;
+  applyStep();
+  state.timer = setTimeout(tick, state.stepMs);
+}
+
+function go(delta){
+  const total = flows[state.flow].steps.length;
+  state.step = Math.max(0, Math.min(total-1, state.step + delta));
+  applyStep();
+}
+function pickFlow(key){
+  if(!flows[key]) return;
+  state.flow = key;
+  state.step = 0;
+  document.querySelectorAll(".flowtab").forEach(b=>{
+    b.setAttribute("aria-pressed", b.dataset.flow === key ? "true" : "false");
+  });
+  applyModeToNodes();
+  drawWires();
+  applyStep();
+}
+function pickMode(m){
+  state.mode = m;
+  document.querySelectorAll(".modepick button").forEach(b=>{
+    b.setAttribute("aria-pressed", b.dataset.mode === m ? "true" : "false");
+  });
+  if(flows[state.flow].onlyMode && flows[state.flow].onlyMode !== m){
+    pickFlow(CONFIG.fallbackFlow);
+    return;
+  }
+  applyModeToNodes();
+  drawWires();
+  applyStep();
+}
+
+const CONFIG = {
+  fallbackFlow: "realtime",
+  keyboardFlowOrder: ["realtime", "cache_gen", "cache_load"],
+  toggleModes: ["ollama", "no_ollama"]
+};
+
+const btnTheme = document.getElementById("btnTheme");
+function toggleTheme(){
+  document.body.classList.toggle("light");
+  try{ localStorage.setItem("arch-theme", document.body.classList.contains("light") ? "light" : "dark"); }catch(e){}
+  drawWires(); applyStep();
+}
+btnTheme.addEventListener("click", toggleTheme);
+try{ if(localStorage.getItem("arch-theme") === "light") document.body.classList.add("light"); }catch(e){}
+
+document.querySelectorAll(".modepick button").forEach(b=>{
+  b.addEventListener("click", ()=>pickMode(b.dataset.mode));
+});
+document.querySelectorAll(".flowtab").forEach(b=>{
+  b.addEventListener("click", ()=>pickFlow(b.dataset.flow));
+});
+btnPlay.addEventListener("click", ()=>setPlaying(!state.playing));
+btnPrev.addEventListener("click", ()=>{ setPlaying(false); go(-1); });
+btnNext.addEventListener("click", ()=>{ setPlaying(false); go(+1); });
+btnPrev2.addEventListener("click", ()=>{ setPlaying(false); go(-1); });
+btnNext2.addEventListener("click", ()=>{ setPlaying(false); go(+1); });
+
+const DRAG_THRESHOLD = 5;
+const SNAP_PX = 32;
+let dragState = null;
+function stageRect(){ return stage.getBoundingClientRect(); }
+function startDrag(n, clientX, clientY){
+  const sr = stageRect();
+  const nr = n.getBoundingClientRect();
+  dragState = { node:n, startX:clientX, startY:clientY, offsetX:clientX-nr.left, offsetY:clientY-nr.top, dragging:false };
+}
+let dragRAF = null;
+function moveDrag(clientX, clientY){
+  if(!dragState) return;
+  const dx = clientX - dragState.startX;
+  const dy = clientY - dragState.startY;
+  if(!dragState.dragging && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+  if(!dragState.dragging){ dragState.dragging = true; dragState.node.classList.add("dragging"); }
+  const sr = stageRect();
+  let rawX = clientX - sr.left - dragState.offsetX;
+  let rawY = clientY - sr.top  - dragState.offsetY;
+  rawX = Math.round(rawX / SNAP_PX) * SNAP_PX;
+  rawY = Math.round(rawY / SNAP_PX) * SNAP_PX;
+  const pctX = Math.max(0, Math.min(92, (rawX / sr.width) * 100));
+  const pctY = Math.max(0, Math.min(92, (rawY / sr.height) * 100));
+  dragState.node.style.left = pctX + "%";
+  dragState.node.style.top  = pctY + "%";
+  if(!dragRAF){ dragRAF = requestAnimationFrame(()=>{ updateWirePaths(); dragRAF = null; }); }
+}
+function endDrag(){
+  if(!dragState) return;
+  const wasDrag = dragState.dragging;
+  const n = dragState.node;
+  n.classList.remove("dragging");
+  if(wasDrag){ saveLayout(); showResetBtn(); drawWires(); applyStep(); }
+  dragState = null;
+  return wasDrag;
+}
+
+nodes.forEach(n=>{
+  n.addEventListener("pointerdown", (e)=>{
+    if(e.button !== 0) return;
+    e.preventDefault();
+    n.setPointerCapture(e.pointerId);
+    startDrag(n, e.clientX, e.clientY);
+  });
+  n.addEventListener("pointermove", (e)=>{ moveDrag(e.clientX, e.clientY); });
+  n.addEventListener("pointerup", (e)=>{ const wasDrag = endDrag(); if(!wasDrag) handleNodeClick(n); });
+  n.addEventListener("pointercancel", ()=>{ endDrag(); });
+  n.tabIndex = 0;
+  n.addEventListener("keydown", (e)=>{
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); handleNodeClick(n); }
+  });
+});
+
+function handleNodeClick(n){
+  const flow = flows[state.flow];
+  const i = flow.steps.findIndex(s=> s.from===n.dataset.id || s.to===n.dataset.id );
+  if(i>=0){ setPlaying(false); state.step = i; applyStep(); }
+  else { n.style.animation = "none"; void n.offsetWidth; n.style.animation = "node-shake .4s ease"; setTimeout(()=>{ n.style.animation = ""; }, 450); }
+}
+
+const LAYOUT_KEY = "arch-layout-" + document.title.replace(/\s/g,"-").toLowerCase();
+function saveLayout(){
+  const positions = {};
+  nodes.forEach(n=>{ positions[n.dataset.id] = { left: n.style.left, top: n.style.top }; });
+  try{ localStorage.setItem(LAYOUT_KEY, JSON.stringify(positions)); }catch(e){}
+}
+function loadLayout(){
+  try{
+    const saved = localStorage.getItem(LAYOUT_KEY);
+    if(!saved) return false;
+    const positions = JSON.parse(saved);
+    let applied = false;
+    nodes.forEach(n=>{ const p = positions[n.dataset.id]; if(p){ n.style.left = p.left; n.style.top = p.top; applied = true; } });
+    return applied;
+  }catch(e){ return false; }
+}
+function resetLayout(){
+  try{ localStorage.removeItem(LAYOUT_KEY); }catch(e){}
+  nodes.forEach(n=>{ const orig = n.dataset.origLeft; const origT = n.dataset.origTop; if(orig) n.style.left = orig; if(origT) n.style.top = origT; });
+  drawWires(); applyStep(); hideResetBtn();
+}
+nodes.forEach(n=>{ n.dataset.origLeft = n.style.left; n.dataset.origTop = n.style.top; });
+const btnResetLayout = document.getElementById("btnResetLayout");
+function showResetBtn(){ btnResetLayout.classList.add("has-custom"); }
+function hideResetBtn(){ btnResetLayout.classList.remove("has-custom"); }
+btnResetLayout.addEventListener("click", resetLayout);
+if(loadLayout()) showResetBtn();
+
+const canvas = document.querySelector(".canvas");
+const btnFullscreen = document.getElementById("btnFullscreen");
+function toggleFullscreen(){ canvas.classList.toggle("is-fullscreen"); setTimeout(()=>{ drawWires(); applyStep(); }, 50); }
+btnFullscreen.addEventListener("click", toggleFullscreen);
+
+window.addEventListener("keydown",(e)=>{
+  if(e.target.closest("input,textarea")) return;
+  if(e.code === "Space"){ e.preventDefault(); setPlaying(!state.playing); }
+  else if(e.key === "ArrowRight"){ setPlaying(false); go(+1); }
+  else if(e.key === "ArrowLeft"){ setPlaying(false); go(-1); }
+  else if(e.key === "t" || e.key === "T"){ toggleTheme(); }
+  else if(e.key === "f" || e.key === "F"){ toggleFullscreen(); }
+  else if(e.key === "r" || e.key === "R"){ if(btnResetLayout.classList.contains("has-custom")) resetLayout(); }
+  else if(e.key === "Escape"){ if(canvas.classList.contains("is-fullscreen")) toggleFullscreen(); }
+  else if(e.key === "o" || e.key === "O"){ const [a, b] = CONFIG.toggleModes; pickMode(state.mode === a ? b : a); }
+  else if(/^[1-9]$/.test(e.key)){ const idx = parseInt(e.key,10)-1; const key = CONFIG.keyboardFlowOrder[idx]; if(key && flows[key]) pickFlow(key); }
+});
+
+let rrTimer;
+window.addEventListener("resize", ()=>{ clearTimeout(rrTimer); rrTimer = setTimeout(()=>{ drawWires(); applyStep(); }, 80); });
+
+applyModeToNodes();
+requestAnimationFrame(()=>{ drawWires(); applyStep(); });
+</script>
+</body>
+</html>

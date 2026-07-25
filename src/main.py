@@ -11,6 +11,8 @@ from mood_classifier import MoodClassifier
 from movie_recommender import MovieRecommender
 from crew import MoodCrew
 
+CACHE_PATH = "data/movie_details.json"
+
 
 class MoodMovieApp:
     def __init__(self):
@@ -20,33 +22,37 @@ class MoodMovieApp:
         self.movie_recommender = MovieRecommender()
         self.current_mood = "neutral"
         self.current_movies = []
-        self.crew = None
         self.frame_count = 0
         self.mood_display_duration = 0
+        self.movie_details = {}
 
     def init_ollama(self):
         try:
-            self.crew = MoodCrew()
+            crew = MoodCrew()
+            self.movie_details = crew.load_cache(CACHE_PATH)
+            if self.movie_details is None:
+                print("    [..] Generating movie details (one-time, takes ~1 min)...")
+                self.movie_details = crew.generate_all_details(self.movie_recommender.movies)
+                crew.save_cache(self.movie_details, CACHE_PATH)
+                print("    [OK] Cache saved to", CACHE_PATH)
+            else:
+                print("    [OK] Loaded cached movie details")
             return True
         except Exception as e:
-            print(f"Ollama not available: {e}")
+            print(f"    [X] Ollama error: {e}")
             return False
 
-    def draw_text_with_background(self, img, text, x, y, font_scale=0.7, thickness=2, bg_color=(50, 50, 50), text_color=(255, 255, 255)):
-        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
-        cv2.rectangle(img, (x, y - text_size[1] - 10), (x + text_size[0] + 10, y + 10), bg_color, -1)
-        cv2.putText(img, text, (x + 5, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, text_color, thickness)
-
-    def create_side_panel(self, width=350):
-        panel = np.ones((480, width, 3), dtype=np.uint8) * 30
+    def create_side_panel(self, width=400):
+        panel_height = 700
+        panel = np.ones((panel_height, width, 3), dtype=np.uint8) * 30
 
         cv2.putText(panel, "MOOD-BASED MOVIE", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        cv2.putText(panel, "RECOMMENDER", (70, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        cv2.putText(panel, "RECOMMENDER", (80, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-        cv2.line(panel, (20, 90), (330, 90), (100, 100, 100), 2)
+        cv2.line(panel, (20, 90), (width - 20, 90), (100, 100, 100), 2)
 
         y_pos = 130
-        cv2.putText(panel, f"Current Mood:", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
+        cv2.putText(panel, "Current Mood:", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
 
         mood_colors = {
             "happy": (0, 255, 0),
@@ -61,26 +67,44 @@ class MoodMovieApp:
 
         cv2.putText(panel, self.current_mood.upper(), (20, y_pos + 30), cv2.FONT_HERSHEY_SIMPLEX, 1.2, mood_color, 3)
 
-        cv2.line(panel, (20, y_pos + 60), (330, y_pos + 60), (100, 100, 100), 1)
+        cv2.line(panel, (20, y_pos + 60), (width - 20, y_pos + 60), (100, 100, 100), 1)
 
         y_pos = 220
         cv2.putText(panel, "Recommended Movies:", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
         y_pos += 30
 
         for i, movie in enumerate(self.current_movies[:5], 1):
-            if y_pos > 450:
+            if y_pos > 310:
                 break
             cv2.putText(panel, f"{i}.", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
-            if len(movie) > 25:
-                movie = movie[:25] + "..."
+            if len(movie) > 28:
+                movie = movie[:28] + "..."
             cv2.putText(panel, movie, (50, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
-            y_pos += 35
+            y_pos += 30
 
-        if self.crew is None:
-            cv2.putText(panel, "Ollama not connected", (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 100, 100), 1)
-            cv2.putText(panel, "Install Ollama for", (20, 475), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 100, 100), 1)
-            cv2.putText(panel, "enhanced results", (20, 500), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 100, 100), 1)
+        cv2.line(panel, (20, y_pos + 10), (width - 20, y_pos + 10), (100, 100, 100), 1)
+        y_pos += 30
+
+        cv2.putText(panel, "AI Details:", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 1)
+        y_pos += 25
+
+        details = self.movie_details.get(self.current_mood, "")
+        if details:
+            lines = details.split("\n")
+            for line in lines:
+                if y_pos > panel_height - 20:
+                    break
+                line = line.strip()
+                if not line:
+                    y_pos += 10
+                    continue
+                if len(line) > 55:
+                    line = line[:55] + "..."
+                cv2.putText(panel, line, (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 220, 255), 1)
+                y_pos += 20
+        else:
+            cv2.putText(panel, "No details available", (20, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
 
         return panel
 
@@ -134,9 +158,7 @@ class MoodMovieApp:
 
         print("\n[3/4] Initializing Ollama...")
         ollama_available = self.init_ollama()
-        if ollama_available:
-            print("    [OK] Ollama connected")
-        else:
+        if not ollama_available:
             print("    [--] Ollama not available (install from ollama.ai)")
 
         print("\n[4/4] Starting real-time capture...")
@@ -174,6 +196,9 @@ class MoodMovieApp:
             frame_with_mesh = self.draw_face_mesh(bgr_frame.copy(), landmarks)
 
             side_panel = self.create_side_panel()
+
+            if frame_with_mesh.shape[0] != side_panel.shape[0]:
+                frame_with_mesh = cv2.resize(frame_with_mesh, (side_panel.shape[1], side_panel.shape[0]))
 
             combined = np.hstack([frame_with_mesh, side_panel])
 
